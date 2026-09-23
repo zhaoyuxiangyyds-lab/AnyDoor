@@ -10,6 +10,12 @@ public final class Keys {
 
     // spoof state (config)
     public static final String STARTED = "started";
+    /**
+     * How long (ms) a stale heartbeat is still treated as "the driver is meant to be on".
+     * Only consulted when the driver process cannot be scheduled at all, so it has to outlast
+     * the worst-case AlarmManager wakeup gap (~9 min while the device is in Doze).
+     */
+    public static final String LEASE_GRACE = "lease_grace";
     public static final String LAT = "lat";            // String(double), WGS-84
     public static final String LNG = "lng";
     public static final String ALT = "alt";            // String(double) meters

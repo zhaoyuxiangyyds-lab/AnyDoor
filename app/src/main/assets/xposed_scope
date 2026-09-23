@@ -1,3 +1,6 @@
 android
 com.android.phone
 com.android.bluetooth
+com.google.android.gms
+com.google.android.apps.maps
+com.google.android.apps.earth

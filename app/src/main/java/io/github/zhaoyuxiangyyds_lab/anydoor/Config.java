@@ -103,6 +103,7 @@ public final class Config {
         if (!p.contains(Keys.BEARING)) e.putString(Keys.BEARING, "0");
         if (!p.contains(Keys.JITTER)) e.putString(Keys.JITTER, "3");
         if (!p.contains(Keys.INTERVAL)) e.putInt(Keys.INTERVAL, Keys.DEFAULT_INTERVAL);
+        if (!p.contains(Keys.LEASE_GRACE)) e.putInt(Keys.LEASE_GRACE, (int) ConfigSnapshot.GRACE_MS);
         if (!p.contains(Keys.WIFI_BLOCK)) e.putBoolean(Keys.WIFI_BLOCK, true);
         if (!p.contains(Keys.CELL_BLOCK)) e.putBoolean(Keys.CELL_BLOCK, true);
         if (!p.contains(Keys.GNSS_BLOCK)) e.putBoolean(Keys.GNSS_BLOCK, true);

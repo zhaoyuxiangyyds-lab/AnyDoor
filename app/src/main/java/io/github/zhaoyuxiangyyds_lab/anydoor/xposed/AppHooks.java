@@ -186,9 +186,58 @@ final class AppHooks {
                 if (masked != null) p.setResult(masked);
             }
         });
+        installGmsHooks(st, pkg, lp.classLoader);
         installIdentityHooks(st);
         installSensorHooks(st);
         HookEntry.log("app hooks installed in " + pkg);
+    }
+
+    // ------------------------------------------------------------------ Google Play services
+
+    /**
+     * Google Play services keeps its own fused cache and hands fixes to clients through
+     * com.google.android.gms.location.LocationResult rather than the platform's LocationResult, so
+     * the system-side onReportLocation rewrite never sees those copies. That is what made Maps and
+     * Earth show the virtual position for a moment and then snap back: GMS re-stamped the fix
+     * (mock flag plus the real extras) after the system had already rewritten it.
+     *
+     * <p>The contained Location objects are still plain android.location.Location, so the getter
+     * hooks above already apply to them; rewriting the container as well removes the mock flag and
+     * the real-provider extras at the point GMS builds them, before any client reads the result.
+     *
+     * <p>Only classes GMS actually bundles are touched, so this is a no-op in every other app:
+     * findClassIfExists returns null when the process has no Play services on its class path.
+     */
+    private static void installGmsHooks(final SpoofState st, final String pkg, ClassLoader cl) {
+        Class<?> result = XposedHelpers.findClassIfExists(
+                "com.google.android.gms.location.LocationResult", cl);
+        if (result == null) return;
+
+        HookUtil.hookAll(result, "getLastLocation", new XC_MethodHook() {
+            @Override
+            protected void afterHookedMethod(MethodHookParam p) {
+                if (!st.started() || st.isExempt(pkg) || !st.bool(Keys.APP_HOOK, true)) return;
+                if (p.hasThrowable() || !(p.getResult() instanceof Location)) return;
+                Location orig = (Location) p.getResult();
+                if (!isSystemFix(orig)) return;
+                p.setResult(st.build(orig.getProvider(), orig));
+            }
+        });
+        HookUtil.hookAll(result, "getLocations", new XC_MethodHook() {
+            @Override
+            protected void afterHookedMethod(MethodHookParam p) {
+                if (!st.started() || st.isExempt(pkg) || !st.bool(Keys.APP_HOOK, true)) return;
+                if (p.hasThrowable() || !(p.getResult() instanceof List)) return;
+                List<?> in = (List<?>) p.getResult();
+                if (in.isEmpty() || !isSystemFix(in.get(0))) return;
+                List<Location> out = new ArrayList<>(in.size());
+                for (Object o : in) {
+                    Location l = (Location) o;
+                    out.add(st.build(l.getProvider(), l));
+                }
+                p.setResult(out);
+            }
+        });
     }
 
     // ------------------------------------------------------------------ privacy: identifiers

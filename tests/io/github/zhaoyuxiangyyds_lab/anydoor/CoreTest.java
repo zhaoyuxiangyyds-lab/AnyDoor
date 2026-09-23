@@ -44,6 +44,13 @@ public class CoreTest {
         check(s!=null&&s.started(1000,100),"valid active snapshot");
         check(!s.started(17000,16100),"lease expires if driver heartbeat stops");
         check(!s.started(1000,50),"elapsed time reset invalidates old lease");
+        // intentValid grace window (frozen-driver fallback): stale heartbeat still counts
+        check(s.intentValid(1000,100),"intentValid accepts fresh heartbeat");
+        check(s.intentValid(1801000,1800100),"intentValid accepts stale heartbeat at grace boundary");
+        check(!s.intentValid(1802000,1801100),"intentValid rejects stale heartbeat past grace");
+        m.put(Keys.LEASE_GRACE,"60000");ConfigSnapshot g=ConfigSnapshot.from(m);m.remove(Keys.LEASE_GRACE);
+        check(g.intentValid(61000,60100),"configured grace window respected at boundary");
+        check(!g.intentValid(62000,61100),"configured grace window expiry");
         m.put("started",false);check(!ConfigSnapshot.from(m).started(1000,100),"stop snapshot never activates");
         m.put("lat","NaN");check(ConfigSnapshot.from(m)==null,"NaN rejected");
         m.put("lat","91");check(ConfigSnapshot.from(m)==null,"invalid latitude rejected");

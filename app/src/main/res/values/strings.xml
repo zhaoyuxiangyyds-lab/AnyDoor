@@ -6,5 +6,8 @@
         <item>android</item>
         <item>com.android.phone</item>
         <item>com.android.bluetooth</item>
+        <item>com.google.android.gms</item>
+        <item>com.google.android.apps.maps</item>
+        <item>com.google.android.apps.earth</item>
     </string-array>
 </resources>

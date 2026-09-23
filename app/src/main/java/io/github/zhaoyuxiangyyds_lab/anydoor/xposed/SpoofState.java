@@ -93,7 +93,10 @@ final class SpoofState {
     long revision() { refresh(); ConfigSnapshot s = snapshot; return s == null ? 0 : s.revision; }
     String error() { refresh(); return error; }
     boolean leaseValid() { refresh(); ConfigSnapshot s = snapshot; return s != null && s.leaseValid(System.currentTimeMillis(), SystemClock.elapsedRealtime()); }
-    boolean started() { refresh(); ConfigSnapshot s = snapshot; return s != null && clientAllowed() && s.started(System.currentTimeMillis(), SystemClock.elapsedRealtime()); }
+    boolean intentValid() { refresh(); ConfigSnapshot s = snapshot; return s != null && s.intentValid(System.currentTimeMillis(), SystemClock.elapsedRealtime()); }
+    // The gate every hook uses. Deliberately keyed on intentValid(), not leaseValid(): a frozen
+    // driver cannot renew its lease, and dropping the spoof then would hand the app a real fix.
+    boolean started() { refresh(); ConfigSnapshot s = snapshot; return s != null && clientAllowed() && s.intentValid(System.currentTimeMillis(), SystemClock.elapsedRealtime()); }
     boolean configReadable() { refresh(); return snapshot != null; }
     String channel() { refresh(); return source; }
     private boolean rawBool(String k, boolean def) { String v = rawStr(k, null); return v == null ? def : Boolean.parseBoolean(v); }

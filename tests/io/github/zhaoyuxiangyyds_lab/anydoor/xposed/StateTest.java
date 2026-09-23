@@ -31,7 +31,8 @@ public class StateTest {
         tick();write(values(2,true,"22"));Files.setLastModifiedTime(mirror,mt);check(st.num("lat",0)==22,"equal mtime does not hide changes");
         tick();write(values(1,true,"11"));check(!st.configReadable(),"reject version rollback");
         reset();write(values(1,true,"11"));st=new SpoofState();check(st.started(),"lease starts active");
-        SystemClock.tick+=16000;check(!st.started(),"readable stale file cannot renew lease");
+        SystemClock.tick+=16000;check(st.started(),"grace window keeps spoofing past lease expiry");
+        SystemClock.tick+=1800000;check(!st.started(),"grace window expiry stops spoofing");
         reset();Files.write(mirror,"{broken".getBytes("UTF-8"));st=new SpoofState();check(!st.started()&&!st.configReadable(),"truncated JSON does not activate");
         tick();write(values(1,true,"33"));check(st.started(),"recovers when valid mirror appears");
         reset();XSharedPreferences.fail=true;st=new SpoofState();check(!st.started(),"no source means stopped");

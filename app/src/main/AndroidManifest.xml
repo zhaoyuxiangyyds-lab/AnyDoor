@@ -56,5 +56,10 @@
         <receiver android:name=".DebugReceiver" android:exported="true">
             <intent-filter><action android:name="io.github.zhaoyuxiangyyds_lab.anydoor.PROBE"/></intent-filter>
         </receiver>
+        <!-- Fired by Lease's AlarmManager to thaw a frozen driver process and renew its heartbeat.
+             Not exported: only our own alarm ever targets it. -->
+        <receiver android:name=".LeaseReceiver" android:exported="false">
+            <intent-filter><action android:name="io.github.zhaoyuxiangyyds_lab.anydoor.LEASE"/></intent-filter>
+        </receiver>
     </application>
 </manifest>

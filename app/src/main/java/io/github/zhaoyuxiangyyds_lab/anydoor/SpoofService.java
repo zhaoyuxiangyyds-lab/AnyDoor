@@ -149,12 +149,36 @@ public class SpoofService extends Service {
         permissionsReady = false;
         ui.removeCallbacks(ticker);
         Config.commit(Config.config(this).edit().putBoolean(Keys.STARTED, false));
+        // The driver is gone for real, so stop asking the OS to wake us: a live alarm with no driver
+        // behind it would only refresh a lease that nothing honours.
+        Lease.cancel(this);
         removeProviders();
         setJoystickVisible(false);
         bg.removeCallbacksAndMessages(null);
         bgThread.quitSafely();
         instance = null;
         super.onDestroy();
+    }
+
+    /**
+     * Re-entry point for {@link LeaseReceiver}: the alarm can fire while this process is frozen or
+     * already dead. A frozen process is thawed by the broadcast itself, so its ticker resumes on its
+     * own; a dead one has to be brought back, otherwise the alarm would keep refreshing a lease with
+     * nothing behind it and every hook would go on faking a location forever.
+     */
+    static boolean revive(Context c) {
+        SpoofService s = instance;
+        if (s != null && s.running) return true;
+        Intent i = new Intent(c, SpoofService.class).setAction(ACTION_START);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) c.startForegroundService(i);
+            else c.startService(i);
+            return true;
+        } catch (RuntimeException e) {
+            // Alarm broadcasts normally whitelist a foreground-service start; some OEM builds do not.
+            Log.w(TAG, "lease revive failed", e);
+            return false;
+        }
     }
 
     // ------------------------------------------------------------------ lifecycle
@@ -167,6 +191,10 @@ public class SpoofService extends Service {
         stepsTotal = Config.num(c, Keys.STEPS, 0);
         reloadParams(c);
         Config.commit(c.edit().putBoolean(Keys.STARTED, true));
+        // First line of defence against being frozen: an alarm that wakes us before the lease can
+        // expire. The in-process ticker keeps the lease fresh while we are scheduled; this covers the
+        // case where we are not.
+        Lease.arm(this);
         startForeground(NOTIF_ID, buildNotification());
         if (running) return;
         running = true;
@@ -197,6 +225,9 @@ public class SpoofService extends Service {
         ui.removeCallbacks(ticker);
         Config.commit(Config.config(this).edit().putBoolean(Keys.STARTED, false)
                 .putString(Keys.SPEED, "0"));
+        // Symmetric to startSpoof(): once the user really switched off, a pending wakeup would only
+        // keep refreshing a lease that nothing behind it honours.
+        Lease.cancel(this);
         setJoystickVisible(false);
         removeProviders();
         stopForeground(true);

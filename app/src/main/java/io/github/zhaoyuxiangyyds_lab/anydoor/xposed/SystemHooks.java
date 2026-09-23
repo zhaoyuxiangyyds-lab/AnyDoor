@@ -40,6 +40,15 @@ final class SystemHooks {
     private static volatile String wifiState = "none", connState = "none";
     private static volatile int mockOp = -2;
 
+    /**
+     * Real LocationResult each rewritten report replaced, keyed by the spoofed result handed to the
+     * registrations. onReportLocation is not per-package, so an exempt app cannot be skipped there;
+     * instead the real result is kept here and handed back to exempt registrations in AcceptHook.
+     * Weak keys so the entries die with the (short-lived) LocationResult objects.
+     */
+    private static final java.util.Map<Object, Object> REAL_RESULTS =
+            java.util.Collections.synchronizedMap(new java.util.WeakHashMap<Object, Object>());
+
     static void install(XC_LoadPackage.LoadPackageParam lp, final SpoofState st) {
         ClassLoader cl = lp.classLoader;
 
@@ -81,21 +90,21 @@ final class SystemHooks {
             Class<?> lpm = XposedHelpers.findClassIfExists("com.android.server.location.provider.LocationProviderManager", cl);
             if (lpm != null) {
                 // onReportLocation is the single, stable choke point every provider report passes
-                // through before it fans out to registrations and the last-location cache. When no
-                // app is exempt we replace the incoming LocationResult here: it is far more reliable
-                // than the per-registration classes (whose names differ across OEM builds), it also
-                // strips the mock-provider flag that the test provider stamps on its fixes (so a
-                // streaming client that drops flagged fixes no longer snaps back to the real
-                // position), and it covers the real provider overriding a spoofed fix a second
-                // later. With an exempt app configured we must keep the real report intact for them,
-                // so there we fall back to the per-registration rewrite that can skip exempt apps.
+                // through before it fans out to registrations and the last-location cache. We always
+                // replace the incoming LocationResult here: it is far more reliable than the
+                // per-registration classes (whose names differ across OEM builds), it also strips the
+                // mock-provider flag that the test provider stamps on its fixes (so a streaming client
+                // that drops flagged fixes no longer snaps back to the real position), and it covers
+                // the real provider overriding a spoofed fix a second later. This hook is not
+                // per-package, so an exempt app cannot be skipped here; instead the real result is
+                // remembered in REAL_RESULTS and restored for exempt registrations in AcceptHook.
                 reportHooks = HookUtil.hookAll(lpm, "onReportLocation", new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam p) {
                         if (Pump.injecting() || !st.started() || p.args.length == 0 || p.args[0] == null) return;
-                        if (st.hasExempt()) return;
                         Object replaced = spoofResult(st, p.args[0], p.thisObject);
                         if (replaced == null) return;
+                        REAL_RESULTS.put(replaced, p.args[0]);
                         p.args[0] = replaced;
                         deliveries.incrementAndGet();
                         lastDelivery = System.currentTimeMillis();
@@ -761,7 +770,12 @@ final class SystemHooks {
 
     /**
      * Android 12+: LocationProviderManager$…Registration.acceptLocationChange(LocationResult).
-     * Rewrites only this recipient, including cached delivery; leaves global cache and exemptions intact.
+     * Rewrites only this recipient, including cached delivery; leaves the global cache intact.
+     *
+     * <p>onReportLocation already rewrote the shared result, so this hook exists to (a) catch
+     * deliveries that skip it on some OEM builds and (b) hand the original result back to exempt
+     * apps. Because onReportLocation is not per-package it cannot skip an exempt app there; it
+     * parks the pre-rewrite result in REAL_RESULTS instead, and we restore it here.
      */
     static final class AcceptHook extends XC_MethodHook {
         private final SpoofState st;
@@ -774,7 +788,13 @@ final class SystemHooks {
         protected void beforeHookedMethod(MethodHookParam p) {
             if (Pump.injecting() || !st.started() || p.args.length == 0 || p.args[0] == null) return;
             String pkg = registrationPackage(p.thisObject);
-            if (st.isExempt(pkg)) return;
+            if (st.isExempt(pkg)) {
+                Object real = REAL_RESULTS.get(p.args[0]);
+                if (real == null) return;
+                p.args[0] = real;
+                if (st.debug()) HookEntry.log("accept → real for " + pkg);
+                return;
+            }
             Object manager = null;
             try {
                 manager = XposedHelpers.getSurroundingThis(p.thisObject);
